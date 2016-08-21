@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-#-*- coding: iso-8859-1 -*-
+# -*- coding: iso-8859-1 -*-
 ################################################################################
 #
 # Parameter/return value type checking for Python 3 using function annotations.
@@ -67,23 +67,23 @@
 
 __all__ = [
 
-# decorators
+    # decorators
 
-"typecheck", "typecheck_with_exceptions",
+    "typecheck", "typecheck_with_exceptions",
 
-# check predicates
+    # check predicates
 
-"optional", "with_attr", "by_regex", "callable", "anything", "nothing",
-"tuple_of", "list_of", "set_of", "dict_of", "one_of", "either",
+    "optional", "with_attr", "by_regex", "callable", "anything", "nothing",
+    "tuple_of", "list_of", "set_of", "dict_of", "one_of", "either",
 
-# exceptions
+    # exceptions
 
-"TypeCheckError", "TypeCheckSpecificationError",
-"InputParameterError", "ReturnValueError",
+    "TypeCheckError", "TypeCheckSpecificationError",
+    "InputParameterError", "ReturnValueError",
 
-# utility methods
+    # utility methods
 
-"disable",
+    "disable",
 
 ]
 
@@ -101,24 +101,34 @@ nothing = lambda x: x is None
 
 _enabled = True
 
+
 def disable():
     global _enabled
     _enabled = False
 
+
 ################################################################################
 
 class TypeCheckError(Exception): pass
+
+
 class TypeCheckSpecificationError(Exception): pass
+
+
 class InputParameterError(TypeCheckError): pass
-class ReturnValueError(TypeCheckError): pass
+
+
+class ReturnValueError(TypeCheckError):
+    pass
+
 
 ################################################################################
 
 class Checker:
-
     class NoValue:
         def __str__(self):
             return "<no value>"
+
     no_value = NoValue()
 
     _registered = []
@@ -129,35 +139,75 @@ class Checker:
 
     @classmethod
     def create(cls, value):
+        # cls is Checker
         if isinstance(value, cls):
             return value
+        # Find others checkers
         for predicate, factory in cls._registered:
             if predicate(value):
                 return factory(value)
         else:
             return None
 
+    @classmethod
+    def is_exists_checker(cls, checker):
+        flag = False
+        for predicate, factory in cls._registered:
+            # print("!{}!".format(factory.__name__))
+            if factory.__name__ == 'CheckerWithError':
+                continue
+            if predicate(checker):
+                flag = True
+                break
+        return flag
+
     def __call__(self, value):
         return self.check(value)
 
+
 ################################################################################
+def has_error(x):
+    if not isinstance(x, tuple):
+        return False
 
-class TypeChecker(Checker):
+    if len(x) != 2:
+        return False
 
+    return isinstance(x[1], str) and (inspect.isclass(x[0]) or Checker.is_exists_checker(x[0]))
+
+
+class CheckerWithError(Checker):
     def __init__(self, cls):
-        self._cls = cls
+        self.cls = cls[0]
+        self.error = cls[1]
 
     def check(self, value):
-        return isinstance(value, self._cls)
+        result = isinstance(value, self.cls)
+        if not result:
+            raise Exception(self.error)
+        return result
 
-Checker.register(inspect.isclass, TypeChecker)
+
+Checker.register(has_error, CheckerWithError)
+
+################################################################################
+
+# class TypeChecker(Checker):
+#     def __init__(self, cls):
+#         self._cls = cls
+#
+#     def check(self, value):
+#         return isinstance(value, self._cls)
+#
+#
+# Checker.register(inspect.isclass, TypeChecker)
 
 ################################################################################
 
 iterable = lambda x: hasattr(x, "__iter__")
 
-class IterableChecker(Checker):
 
+class IterableChecker(Checker):
     def __init__(self, cont):
         self._cls = type(cont)
         self._checks = tuple(Checker.create(x) for x in iter(cont))
@@ -170,36 +220,39 @@ class IterableChecker(Checker):
                functools.reduce(lambda r, c_v: r and c_v[0].check(c_v[1]),
                                 zip(self._checks, vals), True)
 
+
 Checker.register(iterable, IterableChecker)
+
 
 ################################################################################
 
 class CallableChecker(Checker):
-
     def __init__(self, func):
         self._func = func
 
     def check(self, value):
         return bool(self._func(value))
 
+
 Checker.register(callable, CallableChecker)
+
 
 ################################################################################
 
 class OptionalChecker(Checker):
-
     def __init__(self, check):
         self._check = Checker.create(check)
 
     def check(self, value):
         return value is Checker.no_value or value is None or self._check.check(value)
 
+
 optional = OptionalChecker
+
 
 ################################################################################
 
 class WithAttrChecker(Checker):
-
     def __init__(self, *attrs):
         self._attrs = attrs
 
@@ -210,14 +263,15 @@ class WithAttrChecker(Checker):
         else:
             return True
 
+
 with_attr = WithAttrChecker
+
 
 ################################################################################
 
 class ByRegexChecker(Checker):
-
-    _regex_eols = { str: "$", bytes: b"$" }
-    _value_eols = { str: "\n", bytes: b"\n" }
+    _regex_eols = {str: "$", bytes: b"$"}
+    _value_eols = {str: "\n", bytes: b"\n"}
 
     def __init__(self, regex):
         self._regex_t = type(regex)
@@ -230,12 +284,13 @@ class ByRegexChecker(Checker):
                (not self._regex_eol or not value.endswith(self._value_eol)) and \
                self._regex.match(value) is not None
 
+
 by_regex = ByRegexChecker
+
 
 ################################################################################
 
 class ContainerChecker(Checker):
-
     def __init__(self, check):
         self._check = Checker.create(check)
 
@@ -243,34 +298,37 @@ class ContainerChecker(Checker):
         return isinstance(value, self.container) and \
                functools.reduce(lambda r, v: r and self._check.check(v), value, True)
 
+
 ################################################################################
 
 class TupleOfChecker(ContainerChecker):
-
     container = tuple
 
+
 tuple_of = TupleOfChecker
+
 
 ################################################################################
 
 class ListOfChecker(ContainerChecker):
-
     container = list
 
+
 list_of = ListOfChecker
+
 
 ################################################################################
 
 class SetOfChecker(ContainerChecker):
-
     container = set
 
+
 set_of = SetOfChecker
+
 
 ################################################################################
 
 class DictOfChecker(Checker):
-
     def __init__(self, key_check, value_check):
         self._key_check = Checker.create(key_check)
         self._value_check = Checker.create(value_check)
@@ -281,24 +339,26 @@ class DictOfChecker(Checker):
                                              self._value_check.check(t[1]),
                                 value.items(), True)
 
+
 dict_of = DictOfChecker
+
 
 ################################################################################
 
 class OneOfChecker(Checker):
-
     def __init__(self, *values):
         self._values = values
 
     def check(self, value):
         return value in self._values
 
+
 one_of = OneOfChecker
+
 
 ################################################################################
 
 class EitherChecker(Checker):
-
     def __init__(self, *args):
         self._checks = tuple(Checker.create(arg) for arg in args)
 
@@ -309,13 +369,22 @@ class EitherChecker(Checker):
         else:
             return False
 
+
 either = EitherChecker
+
 
 ################################################################################
 
 def typecheck(method, *, input_parameter_error = InputParameterError,
-                         return_value_error = ReturnValueError):
+              return_value_error = ReturnValueError):
+    """
 
+    :rtype: object
+    :param input_parameter_error: 
+    :return: 
+    :param return_value_error: 
+    :type_var method: Python method
+    """
     if not _enabled:
         return method
 
@@ -323,6 +392,7 @@ def typecheck(method, *, input_parameter_error = InputParameterError,
     while hasattr(original_method, "__wrapped__"):
         original_method = original_method.__wrapped__
 
+    # Getting arguments
     argspec = inspect.getfullargspec(original_method)
     if not argspec.annotations:
         return method
@@ -336,29 +406,31 @@ def typecheck(method, *, input_parameter_error = InputParameterError,
     return_checker = None
     kwarg_defaults = argspec.kwonlydefaults or {}
 
-    for n, v in argspec.annotations.items():
-        checker = Checker.create(v)
+    # if in method 'var: int' when var=var, type_var=int
+    for var, type_var in argspec.annotations.items():
+        checker = Checker.create(type_var)
+        # type_var
         if checker is None:
-            raise TypeCheckSpecificationError("invalid typecheck for {0}".format(n))
-        if n in argspec.kwonlyargs:
-            if n in kwarg_defaults and \
-               not checker.check(kwarg_defaults[n]):
+            raise TypeCheckSpecificationError("invalid typecheck for {0}".format(var))
+        if var in argspec.kwonlyargs:
+            if var in kwarg_defaults and \
+                    not checker.check(kwarg_defaults[var]):
                 raise TypeCheckSpecificationError("the default value for {0} is incompatible "
-                                                  "with its typecheck".format(n))
-            kwarg_checkers[n] = checker
-        elif n == "return":
+                                                  "with its typecheck".format(var))
+            kwarg_checkers[var] = checker
+        elif var == "return":
             return_checker = checker
         else:
-            i = argspec.args.index(n)
+            i = argspec.args.index(var)
             if i >= non_default_arg_count and \
-               not checker.check(argspec.defaults[i - non_default_arg_count]):
+                    not checker.check(argspec.defaults[i - non_default_arg_count]):
                 raise TypeCheckSpecificationError("the default value for {0} is incompatible "
-                                                  "with its typecheck".format(n))
-            arg_checkers[i] = (n, checker)
+                                                  "with its typecheck".format(var))
+            arg_checkers[i] = (var, checker)
 
+    # Type checking
     @functools.wraps(method)
     def typecheck_invocation_proxy(*args, **kwargs):
-
         for check, arg in zip(arg_checkers, args):
             if check is not None:
                 arg_name, checker = check
@@ -393,36 +465,39 @@ def typecheck(method, *, input_parameter_error = InputParameterError,
 
     return typecheck_invocation_proxy
 
+
 ################################################################################
 
 _exception_class = lambda t: isinstance(t, type) and issubclass(t, Exception)
 
+
 @typecheck
 def typecheck_with_exceptions(*, input_parameter_error: optional(_exception_class) = InputParameterError,
-                                 return_value_error: optional(_exception_class) = ReturnValueError):
+                              return_value_error: optional(_exception_class) = ReturnValueError):
+    return lambda method: typecheck(method, input_parameter_error=input_parameter_error,
+                                    return_value_error=return_value_error)
 
-    return lambda method: typecheck(method, input_parameter_error = input_parameter_error,
-                                            return_value_error = return_value_error)
 
 ################################################################################
 
 if __name__ == "__main__":
-
     print("self-testing module typecheck.py:")
 
-    from expected import expected
+    # from expected import expected
     from time import time
     from random import randint, shuffle
 
     ############################################################################
 
-    print("method proxy naming: ", end = "")
+    print("method proxy naming: ", end="")
+
 
     ###################
 
     @typecheck
     def foo() -> nothing:
         pass
+
 
     assert foo.__name__ == "foo"
 
@@ -432,7 +507,8 @@ if __name__ == "__main__":
 
     ############################################################################
 
-    print("avoiding excessive proxying: ", end = "")
+    print("avoiding excessive proxying: ", end="")
+
 
     ###################
 
@@ -440,11 +516,14 @@ if __name__ == "__main__":
     def foo():
         assert getattr(foo, "__producing_decorator__", None) is None
 
+
     foo()
+
 
     @typecheck
     def bar() -> nothing:
         assert getattr(bar, "__producing_decorator__") is typecheck
+
 
     bar()
 
@@ -454,13 +533,15 @@ if __name__ == "__main__":
 
     ############################################################################
 
-    print("double annotations wrapping: ", end = "")
+    print("double annotations wrapping: ", end="")
+
 
     ###################
 
     @typecheck
     def foo(x: int):
         return x
+
 
     assert foo(1) == typecheck(foo)(1) == 1
 
@@ -470,35 +551,41 @@ if __name__ == "__main__":
 
     ############################################################################
 
-    print("empty strings in incompatible values: ", end = "")
+    print("empty strings in incompatible values: ", end="")
+
 
     ###################
-
     @typecheck
     def foo(s: lambda s: s != "" = None):
         return s
+
 
     assert foo() is None
     assert foo(None) is None
     assert foo(0) == 0
 
-    with expected(InputParameterError("foo() has got an incompatible value for s: ''")):
-        foo("")
+
+    # with expected(InputParameterError("foo() has got an incompatible value for s: ''")):
+    #     foo("")
+
 
     @typecheck
     def foo(*, k: optional(lambda s: s != "") = None):
         return k
 
+
     assert foo() is None
-    assert foo(k = None) is None
-    assert foo(k = 0) == 0
+    assert foo(k=None) is None
+    assert foo(k=0) == 0
 
     with expected(InputParameterError("foo() has got an incompatible value for k: ''")):
-        foo(k = "")
+        foo(k="")
+
 
     @typecheck
     def foo(s = None) -> lambda s: s != "":
         return s
+
 
     assert foo() is None
     assert foo(None) is None
@@ -513,7 +600,7 @@ if __name__ == "__main__":
 
     ############################################################################
 
-    print("invalid typecheck: ", end = "")
+    print("invalid typecheck: ", end="")
 
     ###################
 
@@ -538,7 +625,7 @@ if __name__ == "__main__":
 
     ############################################################################
 
-    print("incompatible default value: ", end = "")
+    print("incompatible default value: ", end="")
 
     ###################
 
@@ -573,7 +660,8 @@ if __name__ == "__main__":
 
     ############################################################################
 
-    print("changed default value: ", end = "")
+    print("changed default value: ", end="")
+
 
     ###################
 
@@ -582,11 +670,13 @@ if __name__ == "__main__":
         a.append(len(a))
         return a
 
+
     assert foo() == [0]
     assert foo() == [0, 1]
     assert foo([]) == [0]
     assert foo() == [0, 1, 2]
     assert foo() == [0, 1, 2, 3]
+
 
     ###################
 
@@ -595,9 +685,10 @@ if __name__ == "__main__":
         k.append(len(k))
         return k
 
+
     assert foo() == [0]
     assert foo() == [0, 1]
-    assert foo(k = []) == [0]
+    assert foo(k=[]) == [0]
     assert foo() == [0, 1, 2]
     assert foo() == [0, 1, 2, 3]
 
@@ -607,7 +698,8 @@ if __name__ == "__main__":
 
     ############################################################################
 
-    print("default vs. checked args: ", end = "")
+    print("default vs. checked args: ", end="")
+
 
     ###################
 
@@ -615,24 +707,27 @@ if __name__ == "__main__":
     def axn_bxn(a, b):
         return a + b
 
+
     assert axn_bxn(10, 20) == 30
     assert axn_bxn(10, 20.0) == 30.0
     assert axn_bxn(10.0, 20) == 30.0
     assert axn_bxn(10.0, 20.0) == 30.0
 
     with expected(TypeError, "(?:axn_bxn\(\) takes exactly 2 (?:positional )?arguments \(1 given\)|"
-                                "axn_bxn\(\) missing 1 required positional argument: 'b')"):
+                             "axn_bxn\(\) missing 1 required positional argument: 'b')"):
         axn_bxn(10)
 
     with expected(TypeError, "(?:axn_bxn\(\) takes exactly 2 (?:positional )?arguments \(0 given\)|"
-                                "axn_bxn\(\) missing 2 required positional arguments: 'a' and 'b')"):
+                             "axn_bxn\(\) missing 2 required positional arguments: 'a' and 'b')"):
         axn_bxn()
+
 
     ###################
 
     @typecheck
     def axn_b2n(a, b = 2):
         return a + b
+
 
     assert axn_b2n(10, 20) == 30
     assert axn_b2n(10, 20.0) == 30.0
@@ -643,14 +738,16 @@ if __name__ == "__main__":
     assert axn_b2n(10.0) == 12.0
 
     with expected(TypeError, "(?:axn_b2n\(\) takes at least 1 (?:positional )?argument \(0 given\)|"
-                                "axn_b2n\(\) missing 1 required positional argument: 'a')"):
+                             "axn_b2n\(\) missing 1 required positional argument: 'a')"):
         axn_b2n()
+
 
     ###################
 
     @typecheck
     def a1n_b2n(a = 1, b = 2):
         return a + b
+
 
     assert a1n_b2n(10, 20) == 30
     assert a1n_b2n(10, 20.0) == 30.0
@@ -662,11 +759,13 @@ if __name__ == "__main__":
 
     assert a1n_b2n() == 3
 
+
     ###################
 
     @typecheck
     def axn_bxc(a, b: int):
         return a + b
+
 
     assert axn_bxc(10, 20) == 30
 
@@ -679,18 +778,20 @@ if __name__ == "__main__":
         axn_bxc(10.0, 20.0)
 
     with expected(TypeError, "(?:axn_bxc\(\) takes exactly 2 (?:positional )?arguments \(1 given\)|"
-                                "axn_bxc\(\) missing 1 required positional argument: 'b')"):
+                             "axn_bxc\(\) missing 1 required positional argument: 'b')"):
         axn_bxc(10)
 
     with expected(TypeError, "(?:axn_bxc\(\) takes exactly 2 (?:positional )?arguments \(0 given\)|"
-                                "axn_bxc\(\) missing 2 required positional arguments: 'a' and 'b')"):
+                             "axn_bxc\(\) missing 2 required positional arguments: 'a' and 'b')"):
         axn_bxc()
+
 
     ###################
 
     @typecheck
     def axn_b2c(a, b: int = 2):
         return a + b
+
 
     assert axn_b2c(10, 20) == 30
 
@@ -706,14 +807,16 @@ if __name__ == "__main__":
     assert axn_b2c(10.0) == 12.0
 
     with expected(TypeError, "(?:axn_b2c\(\) takes at least 1 (?:positional )?argument \(0 given\)|"
-                                "axn_b2c\(\) missing 1 required positional argument: 'a')"):
+                             "axn_b2c\(\) missing 1 required positional argument: 'a')"):
         axn_b2c()
+
 
     ###################
 
     @typecheck
     def a1n_b2c(a = 1, b: int = 2):
         return a + b
+
 
     assert a1n_b2c(10, 20) == 30
 
@@ -730,11 +833,13 @@ if __name__ == "__main__":
 
     assert a1n_b2c() == 3
 
+
     ###################
 
     @typecheck
     def axc_bxn(a: int, b):
         return a + b
+
 
     assert axc_bxn(10, 20) == 30
     assert axc_bxn(10, 20.0) == 30.0
@@ -746,18 +851,20 @@ if __name__ == "__main__":
         axc_bxn(10.0, 20.0)
 
     with expected(TypeError, "(?:axc_bxn\(\) takes exactly 2 (?:positional )?arguments \(1 given\)|"
-                                "axc_bxn\(\) missing 1 required positional argument: 'b')"):
+                             "axc_bxn\(\) missing 1 required positional argument: 'b')"):
         axc_bxn(10)
 
     with expected(TypeError, "(?:axc_bxn\(\) takes exactly 2 (?:positional )?arguments \(0 given\)|"
-                                "axc_bxn\(\) missing 2 required positional arguments: 'a' and 'b')"):
+                             "axc_bxn\(\) missing 2 required positional arguments: 'a' and 'b')"):
         axc_bxn()
+
 
     ###################
 
     @typecheck
     def axc_b2n(a: int, b = 2):
         return a + b
+
 
     assert axc_b2n(10, 20) == 30
     assert axc_b2n(10, 20.0) == 30.0
@@ -774,14 +881,16 @@ if __name__ == "__main__":
         axc_b2n(10.0)
 
     with expected(TypeError, "(?:axc_b2n\(\) takes at least 1 (?:positional )?argument \(0 given\)|"
-                                "axc_b2n\(\) missing 1 required positional argument: 'a')"):
+                             "axc_b2n\(\) missing 1 required positional argument: 'a')"):
         axc_b2n()
+
 
     ###################
 
     @typecheck
     def a1c_b2n(a: int = 1, b = 2):
         return a + b
+
 
     assert a1c_b2n(10, 20) == 30
     assert a1c_b2n(10, 20.0) == 30.0
@@ -799,11 +908,13 @@ if __name__ == "__main__":
 
     assert a1c_b2n() == 3
 
+
     ###################
 
     @typecheck
     def axc_bxc(a: int, b: int):
         return a + b
+
 
     assert axc_bxc(10, 20) == 30
 
@@ -817,18 +928,20 @@ if __name__ == "__main__":
         axc_bxc(10.0, 20.0)
 
     with expected(TypeError, "(?:axc_bxc\(\) takes exactly 2 (?:positional )?arguments \(1 given\)|"
-                                "axc_bxc\(\) missing 1 required positional argument: 'b')"):
+                             "axc_bxc\(\) missing 1 required positional argument: 'b')"):
         axc_bxc(10)
 
     with expected(TypeError, "(?:axc_bxc\(\) takes exactly 2 (?:positional )?arguments \(0 given\)|"
-                                "axc_bxc\(\) missing 2 required positional arguments: 'a' and 'b')"):
+                             "axc_bxc\(\) missing 2 required positional arguments: 'a' and 'b')"):
         axc_bxc()
+
 
     ###################
 
     @typecheck
     def axc_b2c(a: int, b: int = 2):
         return a + b
+
 
     assert axc_b2c(10, 20) == 30
 
@@ -847,14 +960,16 @@ if __name__ == "__main__":
         axc_b2c(10.0)
 
     with expected(TypeError, "(?:axc_b2c\(\) takes at least 1 (?:positional )?argument \(0 given\)|"
-                                "axc_b2c\(\) missing 1 required positional argument: 'a')"):
+                             "axc_b2c\(\) missing 1 required positional argument: 'a')"):
         axc_b2c()
+
 
     ###################
 
     @typecheck
     def a1c_b2c(a: int = 1, b: int = 2):
         return a + b
+
 
     assert a1c_b2c(10, 20) == 30
 
@@ -880,7 +995,7 @@ if __name__ == "__main__":
 
     ############################################################################
 
-    print("default vs. checked args (randomly generated): ", end = "")
+    print("default vs. checked args (randomly generated): ", end="")
 
     ###################
 
@@ -892,9 +1007,9 @@ if __name__ == "__main__":
         N = randint(1, 10)
         DN = randint(0, N)
 
-        args = [ "a{0:03d}".format(i) for i in range(N) ]
-        chkd = [ randint(0, 1) for i in range(N) ]
-        deft = [ i >= DN for i in range(N) ]
+        args = ["a{0:03d}".format(i) for i in range(N)]
+        chkd = [randint(0, 1) for i in range(N)]
+        deft = [i >= DN for i in range(N)]
 
         def_args = ", ".join(map(lambda x: "{0}{1}{2}".format(x[1][0], x[1][1] and ": int" or "",
                                                               x[1][2] and " = {0}".format(x[0]) or ""),
@@ -914,7 +1029,7 @@ if __name__ == "__main__":
             test_run = test
             test_run += "assert test_func({success_args}) == {success_result}\n"
 
-            failure_args = [ j for (j, c) in enumerate(chkd) if j < provided_args and c ]
+            failure_args = [j for (j, c) in enumerate(chkd) if j < provided_args and c]
             if failure_args:
                 shuffle(failure_args)
                 failure_arg = failure_args[0]
@@ -922,7 +1037,7 @@ if __name__ == "__main__":
                 failure_args = success_args[:]
                 failure_args[failure_arg] = failure_value
                 test_run += "with expected(InputParameterError('test_func() has got an " \
-                                           "incompatible value for a{failure_arg:03d}: {failure_value}')):\n" \
+                            "incompatible value for a{failure_arg:03d}: {failure_value}')):\n" \
                             "    test_func({failure_args})\n"
                 failure_args = ", ".join(map(str, failure_args))
 
@@ -937,7 +1052,8 @@ if __name__ == "__main__":
 
     ############################################################################
 
-    print("default vs. checked kwargs: ", end = "")
+    print("default vs. checked kwargs: ", end="")
+
 
     ###################
 
@@ -945,10 +1061,12 @@ if __name__ == "__main__":
     def foo(*, a: str):
         return a
 
+
     with expected(InputParameterError("foo() has got an incompatible value for a: <no value>")):
         foo()
 
-    assert foo(a = "b") == "b"
+    assert foo(a="b") == "b"
+
 
     ###################
 
@@ -956,11 +1074,13 @@ if __name__ == "__main__":
     def foo(*, a: optional(str) = "a"):
         return a
 
+
     assert foo() == "a"
-    assert foo(a = "b") == "b"
+    assert foo(a="b") == "b"
 
     with expected(InputParameterError("foo() has got an incompatible value for a: 10")):
-        foo(a = 10)
+        foo(a=10)
+
 
     ###################
 
@@ -968,22 +1088,24 @@ if __name__ == "__main__":
     def pxn_qxn(*, p, q, **kwargs):
         return p + q
 
-    assert pxn_qxn(p = 1, q = 2) == 3
-    assert pxn_qxn(p = 1, q = 2.0) == 3.0
-    assert pxn_qxn(p = 1.0, q = 2) == 3.0
-    assert pxn_qxn(p = 1.0, q = 2.0) == 3.0
+
+    assert pxn_qxn(p=1, q=2) == 3
+    assert pxn_qxn(p=1, q=2.0) == 3.0
+    assert pxn_qxn(p=1.0, q=2) == 3.0
+    assert pxn_qxn(p=1.0, q=2.0) == 3.0
 
     with expected(TypeError, "(?:pxn_qxn\(\) needs keyword-only argument q|"
-                                "pxn_qxn\(\) missing 1 required keyword-only argument: 'q')"):
-        pxn_qxn(p = 1)
+                             "pxn_qxn\(\) missing 1 required keyword-only argument: 'q')"):
+        pxn_qxn(p=1)
 
     with expected(TypeError, "(?:pxn_qxn\(\) needs keyword-only argument p|"
-                                "pxn_qxn\(\) missing 1 required keyword-only argument: 'p')"):
-        pxn_qxn(q = 2)
+                             "pxn_qxn\(\) missing 1 required keyword-only argument: 'p')"):
+        pxn_qxn(q=2)
 
     with expected(TypeError, "(?:pxn_qxn\(\) needs keyword-only argument p|"
-                                "pxn_qxn\(\) missing 2 required keyword-only arguments: 'p' and 'q')"):
+                             "pxn_qxn\(\) missing 2 required keyword-only arguments: 'p' and 'q')"):
         pxn_qxn()
+
 
     ###################
 
@@ -991,20 +1113,22 @@ if __name__ == "__main__":
     def pxn_q2n(*, p, q = 2):
         return p + q
 
-    assert pxn_q2n(p = 1, q = 2) == 3
-    assert pxn_q2n(p = 1, q = 2.0) == 3.0
-    assert pxn_q2n(p = 1.0, q = 2) == 3.0
-    assert pxn_q2n(p = 1.0, q = 2.0) == 3.0
 
-    assert pxn_q2n(p = 1) == 3
+    assert pxn_q2n(p=1, q=2) == 3
+    assert pxn_q2n(p=1, q=2.0) == 3.0
+    assert pxn_q2n(p=1.0, q=2) == 3.0
+    assert pxn_q2n(p=1.0, q=2.0) == 3.0
 
-    with expected(TypeError, "(?:pxn_q2n\(\) needs keyword-only argument p|"
-                                "pxn_q2n\(\) missing 1 required keyword-only argument: 'p')"):
-        pxn_q2n(q = 2)
+    assert pxn_q2n(p=1) == 3
 
     with expected(TypeError, "(?:pxn_q2n\(\) needs keyword-only argument p|"
-                                "pxn_q2n\(\) missing 1 required keyword-only argument: 'p')"):
+                             "pxn_q2n\(\) missing 1 required keyword-only argument: 'p')"):
+        pxn_q2n(q=2)
+
+    with expected(TypeError, "(?:pxn_q2n\(\) needs keyword-only argument p|"
+                             "pxn_q2n\(\) missing 1 required keyword-only argument: 'p')"):
         pxn_q2n()
+
 
     ###################
 
@@ -1012,15 +1136,17 @@ if __name__ == "__main__":
     def p1n_q2n(*, p = 1, q = 2):
         return p + q
 
-    assert p1n_q2n(p = 1, q = 2) == 3
-    assert p1n_q2n(p = 1, q = 2.0) == 3.0
-    assert p1n_q2n(p = 1.0, q = 2) == 3.0
-    assert p1n_q2n(p = 1.0, q = 2.0) == 3.0
 
-    assert p1n_q2n(p = 1) == 3
-    assert p1n_q2n(q = 2) == 3
+    assert p1n_q2n(p=1, q=2) == 3
+    assert p1n_q2n(p=1, q=2.0) == 3.0
+    assert p1n_q2n(p=1.0, q=2) == 3.0
+    assert p1n_q2n(p=1.0, q=2.0) == 3.0
+
+    assert p1n_q2n(p=1) == 3
+    assert p1n_q2n(q=2) == 3
 
     assert p1n_q2n() == 3
+
 
     ###################
 
@@ -1028,25 +1154,27 @@ if __name__ == "__main__":
     def pxn_qxc(*, p, q: int):
         return p + q
 
-    assert pxn_qxc(p = 1, q = 2) == 3
+
+    assert pxn_qxc(p=1, q=2) == 3
 
     with expected(InputParameterError("pxn_qxc() has got an incompatible value for q: 2.0")):
-        pxn_qxc(p = 1, q = 2.0)
+        pxn_qxc(p=1, q=2.0)
 
-    assert pxn_qxc(p = 1.0, q = 2) == 3.0
+    assert pxn_qxc(p=1.0, q=2) == 3.0
 
     with expected(InputParameterError("pxn_qxc() has got an incompatible value for q: 2.0")):
-        pxn_qxc(p = 1.0, q = 2.0)
+        pxn_qxc(p=1.0, q=2.0)
 
     with expected(InputParameterError("pxn_qxc() has got an incompatible value for q: <no value>")):
-        pxn_qxc(p = 1)
+        pxn_qxc(p=1)
 
     with expected(TypeError, "(?:pxn_qxc\(\) needs keyword-only argument p|"
-                                "pxn_qxc\(\) missing 1 required keyword-only argument: 'p')"):
-        pxn_qxc(q = 2)
+                             "pxn_qxc\(\) missing 1 required keyword-only argument: 'p')"):
+        pxn_qxc(q=2)
 
     with expected(InputParameterError("pxn_qxc() has got an incompatible value for q: <no value>")):
         pxn_qxc()
+
 
     ###################
 
@@ -1054,25 +1182,27 @@ if __name__ == "__main__":
     def pxn_q2c(*, p, q: int = 2):
         return p + q
 
-    assert pxn_q2c(p = 1, q = 2) == 3
+
+    assert pxn_q2c(p=1, q=2) == 3
 
     with expected(InputParameterError("pxn_q2c() has got an incompatible value for q: 2.0")):
-        pxn_q2c(p = 1, q = 2.0)
+        pxn_q2c(p=1, q=2.0)
 
-    assert pxn_q2c(p = 1.0, q = 2) == 3.0
+    assert pxn_q2c(p=1.0, q=2) == 3.0
 
     with expected(InputParameterError("pxn_q2c() has got an incompatible value for q: 2.0")):
-        pxn_q2c(p = 1.0, q = 2.0)
+        pxn_q2c(p=1.0, q=2.0)
 
     with expected(InputParameterError("pxn_q2c() has got an incompatible value for q: <no value>")):
-        pxn_q2c(p = 1)
+        pxn_q2c(p=1)
 
     with expected(TypeError, "(?:pxn_q2c\(\) needs keyword-only argument p|"
-                                "pxn_q2c\(\) missing 1 required keyword-only argument: 'p')"):
-        pxn_q2c(q = 2)
+                             "pxn_q2c\(\) missing 1 required keyword-only argument: 'p')"):
+        pxn_q2c(q=2)
 
     with expected(InputParameterError("pxn_q2c() has got an incompatible value for q: <no value>")):
         pxn_q2c()
+
 
     ###################
 
@@ -1080,23 +1210,25 @@ if __name__ == "__main__":
     def p1n_q2c(*, p = 1, q: int = 2):
         return p + q
 
-    assert p1n_q2c(p = 1, q = 2) == 3
+
+    assert p1n_q2c(p=1, q=2) == 3
 
     with expected(InputParameterError("p1n_q2c() has got an incompatible value for q: 2.0")):
-        p1n_q2c(p = 1, q = 2.0)
+        p1n_q2c(p=1, q=2.0)
 
-    assert p1n_q2c(p = 1.0, q = 2) == 3.0
+    assert p1n_q2c(p=1.0, q=2) == 3.0
 
     with expected(InputParameterError("p1n_q2c() has got an incompatible value for q: 2.0")):
-        p1n_q2c(p = 1.0, q = 2.0)
+        p1n_q2c(p=1.0, q=2.0)
 
     with expected(InputParameterError("p1n_q2c() has got an incompatible value for q: <no value>")):
-        p1n_q2c(p = 1)
+        p1n_q2c(p=1)
 
-    assert p1n_q2c(q = 2) == 3
+    assert p1n_q2c(q=2) == 3
 
     with expected(InputParameterError("p1n_q2c() has got an incompatible value for q: <no value>")):
         p1n_q2c()
+
 
     ###################
 
@@ -1104,27 +1236,29 @@ if __name__ == "__main__":
     def pxc_qxc(*, p: int, q: int):
         return p + q
 
-    assert pxc_qxc(p = 1, q = 2) == 3
+
+    assert pxc_qxc(p=1, q=2) == 3
 
     with expected(InputParameterError("pxc_qxc() has got an incompatible value for q: 2.0")):
-        pxc_qxc(p = 1, q = 2.0)
+        pxc_qxc(p=1, q=2.0)
 
     with expected(InputParameterError("pxc_qxc() has got an incompatible value for p: 1.0")):
-        pxc_qxc(p = 1.0, q = 2)
+        pxc_qxc(p=1.0, q=2)
 
     with expected(InputParameterError, "(pxc_qxc\\(\\) has got an incompatible value for p: 1.0|"
-                                        "pxc_qxc\\(\\) has got an incompatible value for q: 2.0)"):
-        pxc_qxc(p = 1.0, q = 2.0)
+                                       "pxc_qxc\\(\\) has got an incompatible value for q: 2.0)"):
+        pxc_qxc(p=1.0, q=2.0)
 
     with expected(InputParameterError("pxc_qxc() has got an incompatible value for q: <no value>")):
-        pxc_qxc(p = 1)
+        pxc_qxc(p=1)
 
     with expected(InputParameterError("pxc_qxc() has got an incompatible value for p: <no value>")):
-        pxc_qxc(q = 2)
+        pxc_qxc(q=2)
 
     with expected(InputParameterError, "(pxc_qxc\\(\\) has got an incompatible value for p: <no value>|"
-                                        "pxc_qxc\\(\\) has got an incompatible value for q: <no value>)"):
+                                       "pxc_qxc\\(\\) has got an incompatible value for q: <no value>)"):
         pxc_qxc()
+
 
     ###################
 
@@ -1132,27 +1266,29 @@ if __name__ == "__main__":
     def pxc_q2c(*, p: int, q: int = 2):
         return p + q
 
-    assert pxc_q2c(p = 1, q = 2) == 3
+
+    assert pxc_q2c(p=1, q=2) == 3
 
     with expected(InputParameterError("pxc_q2c() has got an incompatible value for q: 2.0")):
-        pxc_q2c(p = 1, q = 2.0)
+        pxc_q2c(p=1, q=2.0)
 
     with expected(InputParameterError("pxc_q2c() has got an incompatible value for p: 1.0")):
-        pxc_q2c(p = 1.0, q = 2)
+        pxc_q2c(p=1.0, q=2)
 
     with expected(InputParameterError, "(pxc_q2c\\(\\) has got an incompatible value for p: 1.0|"
-                                        "pxc_q2c\\(\\) has got an incompatible value for q: 2.0)"):
-        pxc_q2c(p = 1.0, q = 2.0)
+                                       "pxc_q2c\\(\\) has got an incompatible value for q: 2.0)"):
+        pxc_q2c(p=1.0, q=2.0)
 
     with expected(InputParameterError("pxc_q2c() has got an incompatible value for q: <no value>")):
-        pxc_q2c(p = 1)
+        pxc_q2c(p=1)
 
     with expected(InputParameterError("pxc_q2c() has got an incompatible value for p: <no value>")):
-        pxc_q2c(q = 2)
+        pxc_q2c(q=2)
 
     with expected(InputParameterError, "(pxc_q2c\\(\\) has got an incompatible value for p: <no value>|"
-                                        "pxc_q2c\\(\\) has got an incompatible value for q: <no value>)"):
+                                       "pxc_q2c\\(\\) has got an incompatible value for q: <no value>)"):
         pxc_q2c()
+
 
     ###################
 
@@ -1160,26 +1296,27 @@ if __name__ == "__main__":
     def p1c_q2c(*, p: int = 1, q: int = 2):
         return p + q
 
-    assert p1c_q2c(p = 1, q = 2) == 3
+
+    assert p1c_q2c(p=1, q=2) == 3
 
     with expected(InputParameterError("p1c_q2c() has got an incompatible value for q: 2.0")):
-        p1c_q2c(p = 1, q = 2.0)
+        p1c_q2c(p=1, q=2.0)
 
     with expected(InputParameterError("p1c_q2c() has got an incompatible value for p: 1.0")):
-        p1c_q2c(p = 1.0, q = 2)
+        p1c_q2c(p=1.0, q=2)
 
     with expected(InputParameterError, "(p1c_q2c\\(\\) has got an incompatible value for p: 1.0|"
-                                        "p1c_q2c\\(\\) has got an incompatible value for q: 2.0)"):
-        p1c_q2c(p = 1.0, q = 2.0)
+                                       "p1c_q2c\\(\\) has got an incompatible value for q: 2.0)"):
+        p1c_q2c(p=1.0, q=2.0)
 
     with expected(InputParameterError("p1c_q2c() has got an incompatible value for q: <no value>")):
-        p1c_q2c(p = 1)
+        p1c_q2c(p=1)
 
     with expected(InputParameterError("p1c_q2c() has got an incompatible value for p: <no value>")):
-        p1c_q2c(q = 2)
+        p1c_q2c(q=2)
 
     with expected(InputParameterError, "(p1c_q2c\\(\\) has got an incompatible value for p: <no value>|"
-                                        "p1c_q2c\\(\\) has got an incompatible value for q: <no value>)"):
+                                       "p1c_q2c\\(\\) has got an incompatible value for q: <no value>)"):
         p1c_q2c()
 
     ###################
@@ -1188,7 +1325,7 @@ if __name__ == "__main__":
 
     ############################################################################
 
-    print("default vs. checked kwargs (randomly generated): ", end = "")
+    print("default vs. checked kwargs (randomly generated): ", end="")
 
     ###################
 
@@ -1199,9 +1336,9 @@ if __name__ == "__main__":
 
         N = randint(1, 10)
 
-        kwrs = [ "k{0:03d}".format(i) for i in range(N) ]
-        chkd = [ randint(0, 1) for i in range(N) ]
-        deft = [ randint(0, 1) for i in range(N) ]
+        kwrs = ["k{0:03d}".format(i) for i in range(N)]
+        chkd = [randint(0, 1) for i in range(N)]
+        deft = [randint(0, 1) for i in range(N)]
 
         def_kwrs = ", ".join("{0}{1}{2}".format(k, c and ": optional(int)" or "", d and " = {0}".format(i) or "")
                              for (i, (k, c, d)) in enumerate(zip(kwrs, chkd, deft)))
@@ -1213,12 +1350,12 @@ if __name__ == "__main__":
 
         for i in range(N):
 
-            success_kwrs = { k: i * 10 for (i, (k, c, d)) in enumerate(zip(kwrs, chkd, deft))
-                                       if (not d) or randint(0, 1) }
+            success_kwrs = {k: i * 10 for (i, (k, c, d)) in enumerate(zip(kwrs, chkd, deft))
+                            if (not d) or randint(0, 1)}
 
             temp_kwrs = success_kwrs.copy()
-            temp_kwrs.update({ k: i for (i, (k, d)) in enumerate(zip(kwrs, deft))
-                                    if d and k not in success_kwrs })
+            temp_kwrs.update({k: i for (i, (k, d)) in enumerate(zip(kwrs, deft))
+                              if d and k not in success_kwrs})
 
             success_result = sum(temp_kwrs.values())
 
@@ -1234,7 +1371,7 @@ if __name__ == "__main__":
                     failure_kwrs[failure_kwarg] = failure_value
                     test_run += "kwargs = {failure_kwrs}\n" \
                                 "with expected(InputParameterError('test_func() has got an " \
-                                               "incompatible value for {failure_kwarg}: {failure_value}')):\n" \
+                                "incompatible value for {failure_kwarg}: {failure_value}')):\n" \
                                 "    test_func(**kwargs)\n"
                     break
 
@@ -1248,7 +1385,8 @@ if __name__ == "__main__":
 
     ############################################################################
 
-    print("TypeChecker: ", end = "")
+    print("TypeChecker: ", end="")
+
 
     ###################
 
@@ -1256,23 +1394,30 @@ if __name__ == "__main__":
     def foo(a: int) -> object:
         return a
 
+
     assert foo(10) == 10
+
 
     @typecheck
     def foo(*args, a: str) -> float:
         return float(a)
 
-    assert foo(a = "10.0") == 10.0
+
+    assert foo(a="10.0") == 10.0
+
 
     class Foo():
         pass
 
+
     class Bar(Foo):
         pass
+
 
     @typecheck
     def foo(a: Bar) -> Foo:
         return a
+
 
     f = Bar()
     assert foo(f) is f
@@ -1281,9 +1426,11 @@ if __name__ == "__main__":
     with expected(InputParameterError("foo() has got an incompatible value for a: <__main__.Foo object at")):
         foo(f)
 
+
     @typecheck
     def foo(a: Foo) -> Bar:
         return a
+
 
     f = Bar()
     assert foo(f) is f
@@ -1298,7 +1445,8 @@ if __name__ == "__main__":
 
     ############################################################################
 
-    print("IterableChecker: ", end = "")
+    print("IterableChecker: ", end="")
+
 
     ###################
 
@@ -1306,22 +1454,24 @@ if __name__ == "__main__":
     def foo(a: () = (), *, k: optional(()) = ()) -> ((), ()):
         return a, k
 
+
     assert foo() == ((), ())
     assert foo(()) == ((), ())
-    assert foo(k = ()) == ((), ())
-    assert foo((), k = ()) == ((), ())
+    assert foo(k=()) == ((), ())
+    assert foo((), k=()) == ((), ())
 
     with expected(InputParameterError("foo() has got an incompatible value for a: []")):
         foo([])
 
     with expected(InputParameterError("foo() has got an incompatible value for a: (1,)")):
-        foo((1, ))
+        foo((1,))
 
     with expected(InputParameterError("foo() has got an incompatible value for k: []")):
-        foo(k = [])
+        foo(k=[])
 
     with expected(InputParameterError("foo() has got an incompatible value for k: (1,)")):
-        foo(k = (1, ))
+        foo(k=(1,))
+
 
     ###################
 
@@ -1329,28 +1479,31 @@ if __name__ == "__main__":
     def foo(a: [] = [], *, k: optional([]) = None) -> ([], optional([])):
         return a, k
 
+
     assert foo() == ([], None)
     assert foo([]) == ([], None)
-    assert foo(k = []) == ([], [])
-    assert foo([], k = []) == ([], [])
+    assert foo(k=[]) == ([], [])
+    assert foo([], k=[]) == ([], [])
 
     with expected(InputParameterError("foo() has got an incompatible value for a: ()")):
         foo(())
 
     with expected(InputParameterError("foo() has got an incompatible value for a: (1,)")):
-        foo((1, ))
+        foo((1,))
 
     with expected(InputParameterError("foo() has got an incompatible value for k: ()")):
-        foo(k = ())
+        foo(k=())
 
     with expected(InputParameterError("foo() has got an incompatible value for k: (1,)")):
-        foo(k = (1, ))
+        foo(k=(1,))
+
 
     ###################
 
     @typecheck
     def foo(*args) -> (int, str):
         return args
+
 
     foo(1, "2") == 1, "2"
 
@@ -1363,17 +1516,19 @@ if __name__ == "__main__":
     with expected(ReturnValueError("foo() has returned an incompatible value: (1,)")):
         foo(1)
 
+
     ###################
 
     @typecheck
     def foo(*, k: optional([[[[lambda x: x % 3 == 1]]]]) = [[[[4]]]]):
         return k[0][0][0][0]
 
+
     assert foo() % 3 == 1
-    assert foo(k = [[[[1]]]]) % 3 == 1
+    assert foo(k=[[[[1]]]]) % 3 == 1
 
     with expected(InputParameterError("foo() has got an incompatible value for k: [[[[5]]]]")):
-        foo(k = [[[[5]]]])
+        foo(k=[[[[5]]]])
 
     ###################
 
@@ -1381,7 +1536,8 @@ if __name__ == "__main__":
 
     ############################################################################
 
-    print("CallableChecker: ", end = "")
+    print("CallableChecker: ", end="")
+
 
     ###################
 
@@ -1389,8 +1545,10 @@ if __name__ == "__main__":
     def foo(a: callable, *, k: callable) -> callable:
         return a(k(lambda: 2))
 
+
     x = lambda x: x
-    assert foo(x, k = x)() == 2
+    assert foo(x, k=x)() == 2
+
 
     ###################
 
@@ -1399,14 +1557,17 @@ if __name__ == "__main__":
         @typecheck
         def is_even(cls, value: int) -> bool:
             return value % 2 == 0
+
         @staticmethod
         @typecheck
         def is_odd(value: int) -> bool:
             return not NumberToolset.is_even(value)
 
+
     @typecheck
     def foo(a: NumberToolset.is_even = 0) -> NumberToolset.is_odd:
         return a + 1
+
 
     assert foo() == 1
     assert foo(2) == 3
@@ -1414,11 +1575,13 @@ if __name__ == "__main__":
     with expected(InputParameterError("is_even() has got an incompatible value for value: 1.0")):
         foo(1.0)
 
+
     ###################
 
     @typecheck
     def foo(x = None) -> nothing:
         return x
+
 
     assert foo() is None
 
@@ -1431,7 +1594,8 @@ if __name__ == "__main__":
 
     ############################################################################
 
-    print("OptionalChecker: ", end = "")
+    print("OptionalChecker: ", end="")
+
 
     ###################
 
@@ -1439,17 +1603,20 @@ if __name__ == "__main__":
     def foo(b: bool) -> bool:
         return not b
 
+
     assert foo(True) is False
     assert foo(False) is True
 
     with expected(InputParameterError("foo() has got an incompatible value for b: 0")):
         foo(0)
 
+
     @typecheck
     def foo(*, b: optional(bool) = None) -> bool:
         return b
 
-    assert foo(b = False) is False
+
+    assert foo(b=False) is False
 
     with expected(ReturnValueError("foo() has returned an incompatible value: None")):
         foo()
@@ -1463,9 +1630,11 @@ if __name__ == "__main__":
         def foo(a: not_none = None):
             return a
 
+
     @typecheck
-    def foo(a: optional(not_none) = None): # note how optional overrides the not_none
+    def foo(a: optional(not_none) = None):  # note how optional overrides the not_none
         return a
+
 
     assert foo() is None
     assert foo(None) is None
@@ -1475,23 +1644,29 @@ if __name__ == "__main__":
         def foo(*, k: not_none = None):
             return k
 
+
     @typecheck
-    def foo(*, k: optional(not_none) = None): # note how optional overrides the not_none
+    def foo(*, k: optional(not_none) = None):  # note how optional overrides the not_none
         return k
 
+
     assert foo() is None
-    assert foo(k = None) is None
+    assert foo(k=None) is None
+
 
     @typecheck
     def foo(x = None) -> not_none:
         return x
 
+
     with expected(ReturnValueError("foo() has returned an incompatible value: None")):
         foo()
 
+
     @typecheck
-    def foo(x = None) -> optional(not_none): # note how optional overrides the not_none
+    def foo(x = None) -> optional(not_none):  # note how optional overrides the not_none
         return x
+
 
     assert foo() is None
     assert foo(None) is None
@@ -1502,19 +1677,23 @@ if __name__ == "__main__":
 
     ############################################################################
 
-    print("with_attr: ", end = "")
+    print("with_attr: ", end="")
+
 
     ###################
 
     class FakeIO:
         def write(self):
             pass
+
         def flush(self):
             pass
+
 
     @typecheck
     def foo(a: with_attr("write", "flush")):
         pass
+
 
     foo(FakeIO())
 
@@ -1534,7 +1713,7 @@ if __name__ == "__main__":
 
     ############################################################################
 
-    print("by_regex: ", end = "")
+    print("by_regex: ", end="")
 
     ###################
 
@@ -1557,22 +1736,25 @@ if __name__ == "__main__":
     assert not by_regex("^abc$")("abcx")
     assert not by_regex(b"^abc$")(b"abcx")
 
+
     ###################
 
     @typecheck
     def foo(*, k: by_regex("^[0-9A-F]+$")) -> by_regex("^[0-9]+$"):
         return "".join(reversed(k))
 
-    assert foo(k = "1234") == "4321"
+
+    assert foo(k="1234") == "4321"
 
     with expected(InputParameterError("foo() has got an incompatible value for k: ''")):
-        foo(k = "")
+        foo(k="")
 
     with expected(InputParameterError("foo() has got an incompatible value for k: 1")):
-        foo(k = 1)
+        foo(k=1)
 
     with expected(ReturnValueError("foo() has returned an incompatible value: DAB")):
-        foo(k = "BAD")
+        foo(k="BAD")
+
 
     ###################
 
@@ -1580,16 +1762,17 @@ if __name__ == "__main__":
     def foo(*, k: (by_regex("^1$"), [by_regex("^x$"), by_regex("^y$")])):
         return k[0] + k[1][0] + k[1][1]
 
-    assert foo(k = ("1", ["x", "y"])) == "1xy"
+
+    assert foo(k=("1", ["x", "y"])) == "1xy"
 
     with expected(InputParameterError("foo() has got an incompatible value for k: ('2', ['x', 'y'])")):
-        foo(k = ("2", ["x", "y"]))
+        foo(k=("2", ["x", "y"]))
 
     with expected(InputParameterError("foo() has got an incompatible value for k: ('1', ['X', 'y'])")):
-        foo(k = ("1", ["X", "y"]))
+        foo(k=("1", ["X", "y"]))
 
     with expected(InputParameterError("foo() has got an incompatible value for k: ('1', ['x', 'Y'])")):
-        foo(k = ("1", ["x", "Y"]))
+        foo(k=("1", ["x", "Y"]))
 
     ###################
 
@@ -1602,9 +1785,11 @@ if __name__ == "__main__":
 
     assert len(russian) == 66
 
+
     @typecheck
     def foo(s: by_regex("^[{0}]$".format(russian))):
         return len(s)
+
 
     for c in russian:
         assert foo(c) == 1
@@ -1612,11 +1797,13 @@ if __name__ == "__main__":
     with expected(InputParameterError("foo() has got an incompatible value for s: @")):
         foo("@")
 
+
     ###################
 
     @typecheck
     def numbers_only_please(s: by_regex("^[0-9]+$")):
         pass
+
 
     numbers_only_please("123")
 
@@ -1634,13 +1821,15 @@ if __name__ == "__main__":
 
     ############################################################################
 
-    print("tuple_of: ", end = "")
+    print("tuple_of: ", end="")
+
 
     ###################
 
     @typecheck
     def foo(x: tuple_of(int)) -> tuple_of(float):
         return tuple(map(float, x))
+
 
     assert foo(()) == ()
     assert foo((1, 2, 3)) == (1.0, 2.0, 3.0)
@@ -1651,12 +1840,14 @@ if __name__ == "__main__":
     with expected(InputParameterError("foo() has got an incompatible value for x: []")):
         foo([])
 
+
     ###################
 
     @typecheck
     def foo(x: tuple_of([by_regex("^[01]+$"), int])) -> bool:
         return functools.reduce(lambda r, e: r and int(e[0], 2) == e[1],
                                 x, True)
+
 
     assert foo((["1010", 10], ["0101", 5]))
     assert not foo((["1010", 10], ["0111", 77]))
@@ -1675,13 +1866,15 @@ if __name__ == "__main__":
 
     ############################################################################
 
-    print("list_of: ", end = "")
+    print("list_of: ", end="")
+
 
     ###################
 
     @typecheck
     def foo(x: list_of(int)) -> list_of(float):
         return list(map(float, x))
+
 
     assert foo([]) == []
     assert foo([1, 2, 3]) == [1.0, 2.0, 3.0]
@@ -1692,12 +1885,14 @@ if __name__ == "__main__":
     with expected(InputParameterError("foo() has got an incompatible value for x: ()")):
         foo(())
 
+
     ###################
 
     @typecheck
     def foo(x: list_of((by_regex("^[01]+$"), int))) -> bool:
         return functools.reduce(lambda r, e: r and int(e[0], 2) == e[1],
                                 x, True)
+
 
     assert foo([("1010", 10), ("0101", 5)])
     assert not foo([("1010", 10), ("0111", 77)])
@@ -1716,7 +1911,8 @@ if __name__ == "__main__":
 
     ############################################################################
 
-    print("set_of: ", end = "")
+    print("set_of: ", end="")
+
 
     ###################
 
@@ -1725,6 +1921,7 @@ if __name__ == "__main__":
         xs = xs.copy()
         xs.add(x)
         return xs
+
 
     assert foo(set(), 0) == {0}
     assert foo({1, 2, 3}, 2) == {1, 2, 3}
@@ -1745,13 +1942,15 @@ if __name__ == "__main__":
 
     ############################################################################
 
-    print("dict_of: ", end = "")
+    print("dict_of: ", end="")
+
 
     ###################
 
     @typecheck
     def foo(x: dict_of(int, str)) -> dict_of(str, int):
-        return { v: k for k, v in x.items() }
+        return {v: k for k, v in x.items()}
+
 
     assert foo({}) == {}
     assert foo({1: "1", 2: "2"}) == {"1": 1, "2": 2}
@@ -1765,6 +1964,7 @@ if __name__ == "__main__":
     with expected(InputParameterError("foo() has got an incompatible value for x: {1: 2}")):
         foo({1: 2})
 
+
     ###################
 
     @typecheck
@@ -1772,26 +1972,30 @@ if __name__ == "__main__":
         return functools.reduce(lambda r, t: r and str(t[0][0]) == t[1][0] and str(t[0][1]) == t[1][1],
                                 k.items(), True)
 
-    assert foo(k = { (1, 2): ["1", "2"], (3, 4): ["3", "4"]})
-    assert not foo(k = { (1, 3): ["1", "2"], (3, 4): ["3", "4"]})
-    assert not foo(k = { (1, 2): ["1", "2"], (3, 4): ["3", "5"]})
 
-    with expected(InputParameterError("foo() has got an incompatible value for k: {(1, 2): ['1', '2'], (3, 4): ['3', 'x']}")):
-        foo(k = { (1, 2): ["1", "2"], (3, 4): ["3", "x"]})
+    assert foo(k={(1, 2): ["1", "2"], (3, 4): ["3", "4"]})
+    assert not foo(k={(1, 3): ["1", "2"], (3, 4): ["3", "4"]})
+    assert not foo(k={(1, 2): ["1", "2"], (3, 4): ["3", "5"]})
 
-    with expected(InputParameterError("foo() has got an incompatible value for k: {(1, 2): ['1', '2'], (3,): ['3', '4']}")):
-        foo(k = { (1, 2): ["1", "2"], (3, ): ["3", "4"]})
+    with expected(
+            InputParameterError("foo() has got an incompatible value for k: {(1, 2): ['1', '2'], (3, 4): ['3', 'x']}")):
+        foo(k={(1, 2): ["1", "2"], (3, 4): ["3", "x"]})
 
-    with expected(InputParameterError("foo() has got an incompatible value for k: {(1, 2): ['1', '2'], (3, 4.0): ['3', '4']}")):
-        foo(k = { (1, 2): ["1", "2"], (3, 4.0): ["3", "4"]})
+    with expected(
+            InputParameterError("foo() has got an incompatible value for k: {(1, 2): ['1', '2'], (3,): ['3', '4']}")):
+        foo(k={(1, 2): ["1", "2"], (3,): ["3", "4"]})
+
+    with expected(InputParameterError(
+            "foo() has got an incompatible value for k: {(1, 2): ['1', '2'], (3, 4.0): ['3', '4']}")):
+        foo(k={(1, 2): ["1", "2"], (3, 4.0): ["3", "4"]})
 
     ###################
 
-    assert dict_of(int, optional(str))({ 1: "foo", 2: None }) and \
-           dict_of(int, optional(str)).check({ 1: "foo", 2: None })
+    assert dict_of(int, optional(str))({1: "foo", 2: None}) and \
+           dict_of(int, optional(str)).check({1: "foo", 2: None})
 
-    assert not dict_of(int, optional(str))({ None: "foo", 2: None }) and \
-           not dict_of(int, optional(str)).check({ None: "foo", 2: None })
+    assert not dict_of(int, optional(str))({None: "foo", 2: None}) and \
+           not dict_of(int, optional(str)).check({None: "foo", 2: None})
 
     ###################
 
@@ -1799,7 +2003,8 @@ if __name__ == "__main__":
 
     ############################################################################
 
-    print("one_of: ", end = "")
+    print("one_of: ", end="")
+
 
     ###################
 
@@ -1807,27 +2012,32 @@ if __name__ == "__main__":
     def foo(x: one_of(int, 1)) -> one_of(1, int):
         return x
 
+
     assert foo(1) == 1
     assert foo(int) is int
 
     with expected(InputParameterError("foo() has got an incompatible value for x: 2")):
         foo(2)
 
+
     @typecheck
     def bar(*, x: one_of(None)) -> one_of():
         return x
 
+
     with expected(ReturnValueError("bar() has returned an incompatible value: None")):
-        bar(x = None)
+        bar(x=None)
 
     with expected(TypeCheckSpecificationError("the default value for x is incompatible with its typecheck")):
         @typecheck
         def foo(x: one_of(1) = 2):
             pass
 
+
     @typecheck
     def foo(x: optional(one_of(1, 2)) = 2):
         return x
+
 
     assert foo() == 2
 
@@ -1837,7 +2047,8 @@ if __name__ == "__main__":
 
     ############################################################################
 
-    print("either: ", end = "")
+    print("either: ", end="")
+
 
     ###################
 
@@ -1845,12 +2056,15 @@ if __name__ == "__main__":
     def foo(x: either()):
         pass
 
+
     with expected(InputParameterError("foo() has got an incompatible value for x: 1")):
         foo(1)
+
 
     @typecheck
     def bar(x: either((int, float), by_regex("^foo$"), one_of(b"X", b"Y"))):
         pass
+
 
     bar((1, 1.0))
     bar("foo")
@@ -1866,19 +2080,23 @@ if __name__ == "__main__":
     with expected(InputParameterError("bar() has got an incompatible value for x: Y")):
         bar("Y")
 
-    nothing_at_all = ((nothing, ) * 1000)
+    nothing_at_all = ((nothing,) * 1000)
     either_nothing = either(either(either(either(*nothing_at_all), *nothing_at_all), *nothing_at_all), *nothing_at_all)
+
 
     @typecheck
     def biz(x) -> either_nothing:
         return x
 
+
     with expected(ReturnValueError("biz() has returned an incompatible value: anything")):
         biz("anything")
+
 
     @typecheck
     def accept_number(x: either(int, by_regex("^[0-9]+$"))):
         return int(x) + 1
+
 
     assert accept_number(1) == 2
     assert accept_number("1") == 2
@@ -1892,39 +2110,45 @@ if __name__ == "__main__":
 
     ############################################################################
 
-    print("custom exceptions: ", end = "")
+    print("custom exceptions: ", end="")
+
 
     ###################
 
-    @typecheck_with_exceptions(input_parameter_error = ZeroDivisionError)
+    @typecheck_with_exceptions(input_parameter_error=ZeroDivisionError)
     def foo(x: int):
         pass
+
 
     with expected(ZeroDivisionError("foo() has got an incompatible value for x: 1")):
         foo("1")
 
-    @typecheck_with_exceptions(return_value_error = MemoryError)
+
+    @typecheck_with_exceptions(return_value_error=MemoryError)
     def foo(x) -> str:
         return x
+
 
     with expected(MemoryError):
         foo(1)
 
-    @typecheck_with_exceptions(input_parameter_error = TypeError, return_value_error = TypeError)
+
+    @typecheck_with_exceptions(input_parameter_error=TypeError, return_value_error=TypeError)
     def foo(x: int) -> int:
         return x
+
 
     assert foo(1) == 1
 
     with expected(InputParameterError("typecheck_with_exceptions() has got an incompatible "
                                       "value for input_parameter_error: <class 'int'>")):
-        @typecheck_with_exceptions(input_parameter_error = int)
+        @typecheck_with_exceptions(input_parameter_error=int)
         def foo():
             pass
 
     with expected(InputParameterError("typecheck_with_exceptions() has got an incompatible "
                                       "value for return_value_error: <class 'int'>")):
-        @typecheck_with_exceptions(return_value_error = int)
+        @typecheck_with_exceptions(return_value_error=int)
         def foo():
             pass
 
@@ -1934,7 +2158,8 @@ if __name__ == "__main__":
 
     ############################################################################
 
-    print("disable: ", end = "")
+    print("disable: ", end="")
+
 
     ###################
 
@@ -1942,11 +2167,14 @@ if __name__ == "__main__":
     def foo(x: int):
         pass
 
-    disable() # disable-only switch, no further proxying is performed
+
+    disable()  # disable-only switch, no further proxying is performed
+
 
     @typecheck
     def bar(x: int):
         pass
+
 
     foo(1)
     with expected(InputParameterError("foo() has got an incompatible value for x: 1")):
