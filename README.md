@@ -12,6 +12,27 @@ def foo(x: int, y: int) -> int:
     return x + y
 ```
 
+You can describe error for error handling by scheme: var: (type_or_checker, "error")
+Checkers:
+    optional
+    with_attr
+    by_regex 
+    callable
+    anything
+    nothing
+    tuple_of
+    list_of
+    set_of
+    dict_of
+    one_of 
+    either
+    
+```python
+@typecheck
+def foo(x: int, y: int) -> int:
+    return x + y
+```
+
 ```python
 @typecheck
 def str_to_int(x: by_regex(r'[0-9]+')) -> int:
