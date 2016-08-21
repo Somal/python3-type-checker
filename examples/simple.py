@@ -1,6 +1,5 @@
 from typecheck import *
 from time import time
-from typecheck import has_error
 
 
 @typecheck
