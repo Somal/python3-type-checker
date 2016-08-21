@@ -14,6 +14,12 @@ def foo(x: int, y: int) -> int:
 
 You can describe error for error handling by scheme: `var: (type_or_checker, "error")`
 
+```python
+@typecheck
+def method_with_error_handling(x: (int, "X must be integer, cool!") = 1, y: (str, 'Y must be string') = '') -> int:
+    return x + int(y)
+```
+
 Checkers:
 - optional
 - with_attr
@@ -47,11 +53,7 @@ def str_to_int_divisible_by_3(i: by_regex("^[0-9]+$")) -> divisible_by_three:
     return int(i)
 ```
 
-```python
-@typecheck
-def method_with_error_handling(x: (int, "X must be integer, cool!") = 1, y: (str, 'Y must be string') = '') -> int:
-    return x + int(y)
-```
+
 
 ```python
 @typecheck
