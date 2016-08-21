@@ -192,15 +192,15 @@ Checker.register(has_error, CheckerWithError)
 
 ################################################################################
 
-# class TypeChecker(Checker):
-#     def __init__(self, cls):
-#         self._cls = cls
-#
-#     def check(self, value):
-#         return isinstance(value, self._cls)
-#
-#
-# Checker.register(inspect.isclass, TypeChecker)
+class TypeChecker(Checker):
+    def __init__(self, cls):
+        self._cls = cls
+
+    def check(self, value):
+        return isinstance(value, self._cls)
+
+
+Checker.register(inspect.isclass, TypeChecker)
 
 ################################################################################
 
